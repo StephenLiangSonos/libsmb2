@@ -292,6 +292,11 @@ void *smb2_get_opaque(struct smb2_context *smb2);
 const char *smb2_get_client_guid(struct smb2_context *smb2);
 
 /*
+ * Get the dialect for this context.
+ */
+uint16_t smb2_get_dialect(struct smb2_context *smb2);
+
+/*
  * Asynchronous call to connect a TCP connection to the server
  *
  * Returns:

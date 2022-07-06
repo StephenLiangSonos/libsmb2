@@ -590,3 +590,7 @@ void smb2_set_version(struct smb2_context *smb2,
         smb2->version = version;
 }
 
+uint16_t smb2_get_dialect(struct smb2_context *smb2)
+{
+    return smb2->dialect;
+}
