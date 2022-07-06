@@ -685,8 +685,8 @@ int smb2_rename(struct smb2_context *smb2, const char *oldpath,
 	return rc;
 }
 
-int smb2_statvfs(struct smb2_context *smb2, const char *path,
-                 struct smb2_statvfs *st)
+int smb2_statvfs_sync(struct smb2_context *smb2, const char *path,
+                      struct smb2_statvfs *st)
 {
         struct sync_cb_data *cb_data;
         int rc = 0;

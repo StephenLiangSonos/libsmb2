@@ -838,8 +838,8 @@ int smb2_statvfs_async(struct smb2_context *smb2, const char *path,
 /*
  * Sync statvfs()
  */
-int smb2_statvfs(struct smb2_context *smb2, const char *path,
-                 struct smb2_statvfs *statvfs);
+int smb2_statvfs_sync(struct smb2_context *smb2, const char *path,
+                      struct smb2_statvfs *statvfs);
 
 /*
  * FSTAT
