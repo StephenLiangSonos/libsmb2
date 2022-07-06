@@ -19,10 +19,6 @@
 #  define WORDS_BIGENDIAN 1
 #endif
 
-#if !defined(PS2_EE_PLATFORM) && !defined(PS2_IOP_PLATFORM)
-typedef uint32_t UWORD32;
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
