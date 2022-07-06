@@ -331,6 +331,7 @@ encode_temp(struct auth_data *auth_data, uint64_t t, char *client_challenge,
         if (encoder(sign, 8, auth_data) < 0) {
                 return -1;
         }
+        t = htole64(t);
         if (encoder(&t, 8, auth_data) < 0) {
                 return -1;
         }
