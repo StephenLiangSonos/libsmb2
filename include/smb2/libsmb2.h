@@ -450,7 +450,7 @@ struct smb2dir;
  *          Command_data is NULL.
  */
 int smb2_opendir_async(struct smb2_context *smb2, const char *path,
-                       smb2_command_cb cb, void *cb_data);
+                       smb2_command_cb cb, void *cb_data, int lazy);
 
 /*
  * Sync opendir()
@@ -458,6 +458,7 @@ int smb2_opendir_async(struct smb2_context *smb2, const char *path,
  * Returns NULL on failure.
  */
 struct smb2dir *smb2_opendir(struct smb2_context *smb2, const char *path);
+struct smb2dir *smb2_lazy_opendir(struct smb2_context *smb2, const char *path);
 
 /*
  * closedir()
@@ -475,6 +476,23 @@ void smb2_closedir(struct smb2_context *smb2, struct smb2dir *smb2dir);
  */
 struct smb2dirent *smb2_readdir(struct smb2_context *smb2,
                                 struct smb2dir *smb2dir);
+
+/*
+ * smb2_lazy_readdir() blocks.
+ */
+struct smb2dirent *smb2_lazy_readdir(struct smb2_context *smb2,
+                                     struct smb2dir *smb2dir);
+
+/*
+ * fetchfile() gets the next set of files in a directory.
+ *
+ * Returns
+ *  0 : Op initiated, wait for callback. Expect files to be fetched.
+ * -1 : error
+ *  1 : no more files to fetch
+ */
+int smb2_fetchfiles_async(struct smb2_context *smb2, struct smb2dir *smb2dir,
+                          smb2_command_cb cb, void *cb_data);
 
 /*
  * rewinddir()

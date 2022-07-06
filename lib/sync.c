@@ -208,7 +208,7 @@ struct smb2dir *smb2_opendir(struct smb2_context *smb2, const char *path)
         }
 
 	if (smb2_opendir_async(smb2, path,
-                               opendir_cb, cb_data) != 0) {
+                               opendir_cb, cb_data, 0) != 0) {
 		smb2_set_error(smb2, "smb2_opendir_async failed");
                 free(cb_data);
 		return NULL;
@@ -222,6 +222,83 @@ struct smb2dir *smb2_opendir(struct smb2_context *smb2, const char *path)
 	ptr = cb_data->ptr;
         free(cb_data);
         return ptr;
+}
+
+/*
+ * lazy_opendir()
+ */
+struct smb2dir *smb2_lazy_opendir(struct smb2_context *smb2, const char *path)
+{
+        struct sync_cb_data *cb_data;
+        void *ptr;
+
+        cb_data = calloc(1, sizeof(struct sync_cb_data));
+        if (cb_data == NULL) {
+                smb2_set_error(smb2, "Failed to allocate sync_cb_data");
+                return NULL;
+        }
+
+        if (smb2_opendir_async(smb2, path, opendir_cb, cb_data, 1) != 0) {
+                smb2_set_error(smb2, "smb2_lazy_opendir_async failed");
+                free(cb_data);
+                return NULL;
+        }
+
+        if (wait_for_reply(smb2, cb_data) < 0) {
+                cb_data->status = SMB2_STATUS_CANCELLED;
+                return NULL;
+        }
+
+        ptr = cb_data->ptr;
+        free(cb_data);
+        return ptr;
+}
+
+/*
+ * lazy_readdir()
+ */
+static void lazy_readdir_cb(struct smb2_context *smb2, int status,
+                            void *command_data, void *private_data)
+{
+        struct sync_cb_data *cb_data = private_data;
+
+        if (cb_data->status == SMB2_STATUS_CANCELLED) {
+                free(cb_data);
+                return;
+        }
+
+        cb_data->is_finished = 1;
+        cb_data->status = status;
+}
+
+struct smb2dirent* smb2_lazy_readdir(struct smb2_context *smb2,
+                                     struct smb2dir *dir)
+{
+        // get the current set of dirents, does not block
+        struct smb2dirent* ent = smb2_readdir(smb2, dir);
+        if (ent) {
+                return ent;
+        }
+
+        struct sync_cb_data *cb_data;
+        cb_data = calloc(1, sizeof(struct sync_cb_data));
+        if (cb_data == NULL) {
+                smb2_set_error(smb2, "Failed to allocate sync_cb_data");
+                return NULL;
+        }
+
+        // free existing (already-traversed) dirents, and get the next set of
+        // dirents from the server
+        int rc = smb2_fetchfiles_async(smb2, dir, lazy_readdir_cb, cb_data);
+        if (-1 == rc || 1 == rc) {
+                goto done;
+        }
+
+        // block until receives a reply
+        rc = wait_for_reply(smb2, cb_data);
+done:
+        free(cb_data);
+        return rc ? NULL : smb2_readdir(smb2, dir);
 }
 
 /*
@@ -885,4 +962,3 @@ int smb2_echo(struct smb2_context *smb2)
 
 	return rc;
 }
-

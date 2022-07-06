@@ -151,6 +151,10 @@ struct smb2dir {
         struct smb2_dirent_internal *entries;
         struct smb2_dirent_internal *current_entry;
         int index;
+
+        // lazy
+        int is_lazy;
+        int has_more_files;
 };
 
 struct smb2fh {
@@ -219,7 +223,7 @@ void
 smb2_seekdir(struct smb2_context *smb2, struct smb2dir *dir,
                   long loc)
 {
-        if (dir == NULL){
+        if ((dir == NULL) || dir->is_lazy){
                 return;
         }
         dir->current_entry = dir->entries;
@@ -234,7 +238,7 @@ smb2_seekdir(struct smb2_context *smb2, struct smb2dir *dir,
 long
 smb2_telldir(struct smb2_context *smb2, struct smb2dir *dir)
 {
-        if (dir == NULL) {
+        if ((dir == NULL) || dir->is_lazy) {
                 return -EINVAL;
         }
         return dir->index;
@@ -244,7 +248,7 @@ void
 smb2_rewinddir(struct smb2_context *smb2,
                     struct smb2dir *dir)
 {
-        if (dir == NULL) {
+        if ((dir == NULL) || dir->is_lazy) {
                 return;
         }
         dir->current_entry = dir->entries;
@@ -426,8 +430,6 @@ opendir_cb(struct smb2_context *smb2, int status,
 {
         struct smb2dir *dir = private_data;
         struct smb2_create_reply *rep = command_data;
-        struct smb2_query_directory_request req;
-        struct smb2_pdu *pdu;
 
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "Opendir failed with (0x%08x) %s.",
@@ -439,26 +441,34 @@ opendir_cb(struct smb2_context *smb2, int status,
 
         memcpy(dir->file_id, rep->file_id, SMB2_FD_SIZE);
 
-        memset(&req, 0, sizeof(struct smb2_query_directory_request));
-        req.file_information_class = SMB2_FILE_ID_FULL_DIRECTORY_INFORMATION;
-        req.flags = 0;
-        memcpy(req.file_id, dir->file_id, SMB2_FD_SIZE);
-        req.output_buffer_length = DEFAULT_OUTPUT_BUFFER_LENGTH;
-        req.name = "*";
+        if (!dir->is_lazy) {
+                struct smb2_query_directory_request req;
+                struct smb2_pdu *pdu;
+                memset(&req, 0, sizeof(struct smb2_query_directory_request));
+                req.file_information_class = SMB2_FILE_ID_FULL_DIRECTORY_INFORMATION;
+                req.flags = 0;
+                memcpy(req.file_id, dir->file_id, SMB2_FD_SIZE);
+                req.output_buffer_length = DEFAULT_OUTPUT_BUFFER_LENGTH;
+                req.name = "*";
 
-        pdu = smb2_cmd_query_directory_async(smb2, &req, query_cb, dir);
-        if (pdu == NULL) {
-                smb2_set_error(smb2, "Failed to create query command.");
-                dir->cb(smb2, -ENOMEM, NULL, dir->cb_data);
-                free_smb2dir(smb2, dir);
-                return;
+                pdu = smb2_cmd_query_directory_async(smb2, &req, query_cb, dir);
+                if (pdu == NULL) {
+                        smb2_set_error(smb2, "Failed to create query command.");
+                        dir->cb(smb2, -ENOMEM, NULL, dir->cb_data);
+                        free_smb2dir(smb2, dir);
+                        return;
+                }
+                smb2_queue_pdu(smb2, pdu);
+        } else {
+                // skip issuing of query command until lazy_readdir() is called.
+                dir->has_more_files = 1;
+                dir->cb(smb2, 0, dir, dir->cb_data);
         }
-        smb2_queue_pdu(smb2, pdu);
 }
 
 int
 smb2_opendir_async(struct smb2_context *smb2, const char *path,
-                   smb2_command_cb cb, void *cb_data)
+                   smb2_command_cb cb, void *cb_data, int lazy)
 {
         struct smb2_create_request req;
         struct smb2dir *dir;
@@ -480,6 +490,7 @@ smb2_opendir_async(struct smb2_context *smb2, const char *path,
         SMB2_LIST_ADD(&smb2->dirs, dir);
         dir->cb = cb;
         dir->cb_data = cb_data;
+        dir->is_lazy = lazy;
 
         memset(&req, 0, sizeof(struct smb2_create_request));
         req.requested_oplock_level = SMB2_OPLOCK_LEVEL_NONE;
@@ -499,6 +510,101 @@ smb2_opendir_async(struct smb2_context *smb2, const char *path,
         }
         smb2_queue_pdu(smb2, pdu);
 
+        return 0;
+}
+
+static void
+fetchfiles_cb(struct smb2_context *smb2, int status,
+              void *command_data, void *private_data)
+{
+        struct smb2dir *dir = private_data;
+        struct smb2_query_directory_reply *rep = command_data;
+
+        if (status == SMB2_STATUS_SUCCESS) {
+                struct smb2_iovec vec;
+
+                vec.buf = rep->output_buffer;
+                vec.len = rep->output_buffer_length;
+
+                if (decode_dirents(smb2, dir, &vec) < 0) {
+                        dir->cb(smb2, -ENOMEM, NULL, dir->cb_data);
+                        free_smb2dir(smb2, dir);
+                } else {
+                        dir->current_entry = dir->entries;
+                        dir->cb(smb2, 0, NULL, dir->cb_data);
+                }
+
+                return;
+        }
+
+        if (status == SMB2_STATUS_NO_MORE_FILES) {
+                dir->has_more_files = 0;
+                struct smb2_close_request req;
+                struct smb2_pdu *pdu;
+
+                /* We have all the data */
+                memset(&req, 0, sizeof(struct smb2_close_request));
+                req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
+                memcpy(req.file_id, dir->file_id, SMB2_FD_SIZE);
+
+                pdu = smb2_cmd_close_async(smb2, &req, od_close_cb, dir);
+                if (pdu == NULL) {
+                        dir->cb(smb2, -ENOMEM, NULL, dir->cb_data);
+                        free_smb2dir(smb2, dir);
+                        return;
+                }
+                smb2_queue_pdu(smb2, pdu);
+
+                return;
+        }
+
+        smb2_set_error(smb2, "Query directory failed with (0x%08x) %s. %s",
+                       status, nterror_to_str(status),
+                       smb2_get_error(smb2));
+        dir->cb(smb2, -nterror_to_errno(status), NULL, dir->cb_data);
+        free_smb2dir(smb2, dir);
+}
+
+int
+smb2_fetchfiles_async(struct smb2_context *smb2, struct smb2dir *dir,
+                      smb2_command_cb cb, void *cb_data)
+{
+        if (!dir) {
+                return -1;
+        }
+
+        if (!dir->has_more_files) {
+                return 1;
+        }
+        dir->cb = cb;
+        dir->cb_data = cb_data;
+
+        // free existing entries
+        while (dir->entries) {
+                struct smb2_dirent_internal *e = dir->entries->next;
+                free(discard_const(dir->entries->dirent.name));
+                free(dir->entries);
+                dir->entries = e;
+        }
+
+        // query for more entries
+        struct smb2_query_directory_request req;
+        struct smb2_pdu *pdu;
+        memset(&req, 0, sizeof(struct smb2_query_directory_request));
+        req.file_information_class = SMB2_FILE_ID_FULL_DIRECTORY_INFORMATION;
+        req.flags = 0;
+        memcpy(req.file_id, dir->file_id, SMB2_FD_SIZE);
+        req.output_buffer_length = DEFAULT_OUTPUT_BUFFER_LENGTH;
+        req.name = "*";
+
+        pdu = smb2_cmd_query_directory_async(smb2, &req, fetchfiles_cb, dir);
+        if (pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create query command.");
+                dir->cb(smb2, -ENOMEM, NULL, dir->cb_data);
+                free_smb2dir(smb2, dir);
+                return -1;
+        }
+        smb2_queue_pdu(smb2, pdu);
         return 0;
 }
 
