@@ -170,7 +170,7 @@ smb2_process_query_info_variable(struct smb2_context *smb2,
         struct smb2_iovec vec = {&iov->buf[IOV_OFFSET],
                                  iov->len - IOV_OFFSET,
                                  NULL};
-        void *ptr;
+        void *ptr = NULL;
 
         switch (pdu->info_type) {
         case SMB2_0_INFO_FILE:
@@ -178,31 +178,34 @@ smb2_process_query_info_variable(struct smb2_context *smb2,
                 case SMB2_FILE_BASIC_INFORMATION:
                         ptr = smb2_alloc_init(smb2,
                                   sizeof(struct smb2_file_basic_info));
-                        if (smb2_decode_file_basic_info(smb2, ptr, ptr, &vec)) {
+                        if (ptr && smb2_decode_file_basic_info(smb2, ptr, ptr, &vec)) {
                                 smb2_set_error(smb2, "could not decode file "
                                                "basic info. %s",
                                                smb2_get_error(smb2));
+                                smb2_free_data(smb2, ptr);
                                 return -1;
                         }
                         break;
                 case SMB2_FILE_STANDARD_INFORMATION:
                         ptr = smb2_alloc_init(smb2,
                                   sizeof(struct smb2_file_standard_info));
-                        if (smb2_decode_file_standard_info(smb2, ptr, ptr,
+                        if (ptr && smb2_decode_file_standard_info(smb2, ptr, ptr,
                                                            &vec)) {
                                 smb2_set_error(smb2, "could not decode file "
                                                "standard info. %s",
                                                smb2_get_error(smb2));
+                                smb2_free_data(smb2, ptr);
                                 return -1;
                         }
                         break;
                 case SMB2_FILE_ALL_INFORMATION:
                         ptr = smb2_alloc_init(smb2,
                                   sizeof(struct smb2_file_all_info));
-                        if (smb2_decode_file_all_info(smb2, ptr, ptr, &vec)) {
+                        if (ptr && smb2_decode_file_all_info(smb2, ptr, ptr, &vec)) {
                                 smb2_set_error(smb2, "could not decode file "
                                                "all info. %s",
                                                smb2_get_error(smb2));
+                                smb2_free_data(smb2, ptr);
                                 return -1;
                         }
                         break;
@@ -217,78 +220,85 @@ smb2_process_query_info_variable(struct smb2_context *smb2,
         case SMB2_0_INFO_SECURITY:
                 ptr = smb2_alloc_init(smb2,
                                       sizeof(struct smb2_security_descriptor));
-                if (smb2_decode_security_descriptor(smb2, ptr, ptr, &vec)) {
+                if (ptr && smb2_decode_security_descriptor(smb2, ptr, ptr, &vec)) {
                         smb2_set_error(smb2, "could not decode security "
                                        "descriptor. %s",
                                        smb2_get_error(smb2));
+                        smb2_free_data(smb2, ptr);
                         return -1;
                 }
                 break;
         case SMB2_0_INFO_FILESYSTEM:
                 switch (pdu->file_info_class) {
-		case SMB2_FILE_FS_VOLUME_INFORMATION:
-			ptr = smb2_alloc_init(smb2,
-				  sizeof(struct smb2_file_fs_volume_info));
-			if (smb2_decode_file_fs_volume_info(smb2, ptr, ptr,
-							    &vec)) {
-				smb2_set_error(smb2, "could not decode file "
-					       "fs volume info. %s",
-					       smb2_get_error(smb2));
-				return -1;
-			}
-			break;
+                case SMB2_FILE_FS_VOLUME_INFORMATION:
+                        ptr = smb2_alloc_init(smb2,
+                                sizeof(struct smb2_file_fs_volume_info));
+                        if (ptr && smb2_decode_file_fs_volume_info(smb2, ptr, ptr,
+                                                                   &vec)) {
+                                smb2_set_error(smb2, "could not decode file "
+                                                     "fs volume info. %s",
+                                                     smb2_get_error(smb2));
+                                smb2_free_data(smb2, ptr);
+                                return -1;
+                        }
+                        break;
                 case SMB2_FILE_FS_SIZE_INFORMATION:
                         ptr = smb2_alloc_init(smb2,
                                   sizeof(struct smb2_file_fs_size_info));
-                        if (smb2_decode_file_fs_size_info(smb2, ptr, ptr,
-                                                          &vec)) {
+                        if (ptr && smb2_decode_file_fs_size_info(smb2, ptr, ptr,
+                                                                 &vec)) {
                                 smb2_set_error(smb2, "could not decode file "
                                                "fs size info. %s",
                                                smb2_get_error(smb2));
+                                smb2_free_data(smb2, ptr);
                                 return -1;
                         }
                         break;
                 case SMB2_FILE_FS_DEVICE_INFORMATION:
                         ptr = smb2_alloc_init(smb2,
                                   sizeof(struct smb2_file_fs_device_info));
-                        if (smb2_decode_file_fs_device_info(smb2, ptr, ptr,
-                                                          &vec)) {
+                        if (ptr && smb2_decode_file_fs_device_info(smb2, ptr, ptr,
+                                                                   &vec)) {
                                 smb2_set_error(smb2, "could not decode file "
                                                "fs device info. %s",
                                                smb2_get_error(smb2));
+                                smb2_free_data(smb2, ptr);
                                 return -1;
                         }
                         break;
                 case SMB2_FILE_FS_CONTROL_INFORMATION:
                         ptr = smb2_alloc_init(smb2,
                                   sizeof(struct smb2_file_fs_control_info));
-                        if (smb2_decode_file_fs_control_info(smb2, ptr, ptr,
-                                                          &vec)) {
+                        if (ptr && smb2_decode_file_fs_control_info(smb2, ptr, ptr,
+                                                                    &vec)) {
                                 smb2_set_error(smb2, "could not decode file "
                                                "fs control info. %s",
                                                smb2_get_error(smb2));
+                                smb2_free_data(smb2, ptr);
                                 return -1;
                         }
                         break;
                 case SMB2_FILE_FS_FULL_SIZE_INFORMATION:
                         ptr = smb2_alloc_init(smb2,
                                   sizeof(struct smb2_file_fs_full_size_info));
-                        if (smb2_decode_file_fs_full_size_info(smb2, ptr, ptr,
-                                                               &vec)) {
+                        if (ptr && smb2_decode_file_fs_full_size_info(smb2, ptr, ptr,
+                                                                      &vec)) {
                                 smb2_set_error(smb2, "could not decode file "
                                                "fs full size info. %s",
                                                smb2_get_error(smb2));
+                                smb2_free_data(smb2, ptr);
                                 return -1;
                         }
                         break;
                 case SMB2_FILE_FS_SECTOR_SIZE_INFORMATION:
                         ptr = smb2_alloc_init(smb2,
                                   sizeof(struct smb2_file_fs_sector_size_info));
-                        if (smb2_decode_file_fs_sector_size_info(smb2, ptr, ptr,
-                                                                 &vec)) {
+                        if (ptr && smb2_decode_file_fs_sector_size_info(smb2, ptr, ptr,
+                                                                        &vec)) {
                                 smb2_set_error(smb2, "could not decode file "
                                                "fs sector size info. %s",
                                                smb2_get_error(smb2));
+                                smb2_free_data(smb2, ptr);
                                 return -1;
                         }
                         break;

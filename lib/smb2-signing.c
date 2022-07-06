@@ -150,7 +150,9 @@ void smb3_aes_cmac_128(uint8_t key[AES128_KEY_LEN],
         } else {
                 memcpy(scratch, &msg[i*AES128_KEY_LEN], rem);
                 scratch[rem] = 0x80;
-                memset(&scratch[rem + 1], 0, AES128_KEY_LEN - (rem + 1));
+                if ((rem + 1) < AES128_KEY_LEN) {
+                        memset(&scratch[rem + 1], 0, AES128_KEY_LEN - (rem + 1));
+                }
                 aes_cmac_xor(scratch, sub_key2);
         }
 

@@ -234,6 +234,8 @@ ntlm_convert_password_hash(const char *password, unsigned char password_hash[16]
                 password_hash[i / 2] = (hn << 4) | ln;
         }
 
+        free(utf16_password);
+
         return 0;
 }
 

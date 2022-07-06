@@ -1951,6 +1951,8 @@ getinfo_cb_3(struct smb2_context *smb2, int status,
 
         if (stat_data->status == SMB2_STATUS_SUCCESS) {
                 stat_data->status = status;
+        } else {
+                smb2_set_error(smb2, "close command failed");
         }
 
         stat_data->cb(smb2, -nterror_to_errno(stat_data->status),
@@ -1969,6 +1971,7 @@ getinfo_cb_2(struct smb2_context *smb2, int status,
                 stat_data->status = status;
         }
         if (stat_data->status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "query info command failed");
                 return;
         }
 
@@ -2023,6 +2026,8 @@ getinfo_cb_1(struct smb2_context *smb2, int status,
 
         if (stat_data->status == SMB2_STATUS_SUCCESS) {
                 stat_data->status = status;
+        } else {
+                smb2_set_error(smb2, "create command failed");
         }
 }
 
@@ -2098,6 +2103,7 @@ smb2_getinfo_async(struct smb2_context *smb2, const char *path,
 
         next_pdu = smb2_cmd_close_async(smb2, &cl_req, getinfo_cb_3, stat_data);
         if (next_pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create close command");
                 stat_data->cb(smb2, -ENOMEM, NULL, stat_data->cb_data);
                 free(stat_data);
                 smb2_free_pdu(smb2, pdu);
