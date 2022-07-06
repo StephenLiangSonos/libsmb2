@@ -527,13 +527,12 @@ fetchfiles_cb(struct smb2_context *smb2, int status,
                 vec.len = rep->output_buffer_length;
 
                 if (decode_dirents(smb2, dir, &vec) < 0) {
+                        smb2_set_error(smb2, "Failed to decode dirents");
                         dir->cb(smb2, -ENOMEM, NULL, dir->cb_data);
-                        free_smb2dir(smb2, dir);
                 } else {
                         dir->current_entry = dir->entries;
                         dir->cb(smb2, 0, NULL, dir->cb_data);
                 }
-
                 return;
         }
 
@@ -549,12 +548,11 @@ fetchfiles_cb(struct smb2_context *smb2, int status,
 
                 pdu = smb2_cmd_close_async(smb2, &req, od_close_cb, dir);
                 if (pdu == NULL) {
+                        smb2_set_error(smb2, "Failed to create close command");
                         dir->cb(smb2, -ENOMEM, NULL, dir->cb_data);
-                        free_smb2dir(smb2, dir);
                         return;
                 }
                 smb2_queue_pdu(smb2, pdu);
-
                 return;
         }
 
@@ -562,7 +560,6 @@ fetchfiles_cb(struct smb2_context *smb2, int status,
                        status, nterror_to_str(status),
                        smb2_get_error(smb2));
         dir->cb(smb2, -nterror_to_errno(status), NULL, dir->cb_data);
-        free_smb2dir(smb2, dir);
 }
 
 int

@@ -297,6 +297,9 @@ struct smb2dirent* smb2_lazy_readdir(struct smb2_context *smb2,
         // block until receives a reply
         rc = wait_for_reply(smb2, cb_data);
 done:
+        if (0 == rc) {
+            rc = cb_data->status;
+        }
         free(cb_data);
         return rc ? NULL : smb2_readdir(smb2, dir);
 }
